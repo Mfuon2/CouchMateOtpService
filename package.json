@@ -1,0 +1,9 @@
+{
+  "name": "CourchMateAPI",
+  "version": "1.0.0",
+  "main": "app.js",
+  "license": "MIT",
+  "description": "Provides the Backend to the main Application (CouchMate)",
+  "author": "Mfuon Leonard",
+  "private": false
+}
