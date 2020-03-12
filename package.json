@@ -5,5 +5,9 @@
   "license": "MIT",
   "description": "Provides the Backend to the main Application (CouchMate)",
   "author": "Mfuon Leonard",
-  "private": false
+  "private": false,
+  "dependencies": {
+    "express": "^4.17.1",
+    "tsc": "^1.20150623.0"
+  }
 }
