@@ -6,8 +6,13 @@
   "description": "Provides the Backend to the main Application (CouchMate)",
   "author": "Mfuon Leonard",
   "private": false,
+  "scripts": {
+    "start": "ts-node ./src/app.ts"
+  },
   "dependencies": {
     "express": "^4.17.1",
-    "tsc": "^1.20150623.0"
+    "nodemon": "^2.0.2",
+    "ts-node": "^8.6.2",
+    "typescript": "^3.8.3"
   }
 }
