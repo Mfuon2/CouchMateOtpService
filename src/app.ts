@@ -8,12 +8,13 @@ import * as logger from '../src/middlewares/logger';
 import * as routes from '../src/routes/user';
 
 const app = express();
+const PORT = 5000;
 dotenv.config();
 app.use(logger);
-app.use(routes);
-
-app.listen(5000, () => {
-    //TODO: Add env with the port number
-    console.log(`Listening on ${5000}`);
+app.get('/', (request, response) => {
+    response.send('Hello World');
+  });
+app.listen(PORT, () => {
+    console.log(`Listening on ${PORT}`);
 })
 
