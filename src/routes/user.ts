@@ -1,8 +1,14 @@
-module.exports = function(app){
-    app.get("/", function(req,res){
+
+
+const user = (app:any) => {
+    app.get("/", function(req:any,res:any){
         res.body('Response on get');
+        res.status('OK').json(res.body)
     })
-    app.get("/user", function(req,res){
+
+    app.get("/user", function(req:any,res:any){
         res.body('/user');
     })
 }
+
+module.exports = user;

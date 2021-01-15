@@ -1,13 +1,19 @@
+import chalk from 'chalk';
 
-// module.exports = {
-//     error: function(req, res, next){
-//         console.log('Error : ' + req );
-//     }
-// }
+const err = (msg: string, stack: string) => {
+    console.log(chalk.redBright(' ERR: ' + msg + ' STACK: ' + stack))
+}
 
-const logger = (req, res, next) => {
-    console.log(`Time: ${new Date()} - Method: ${req.method} - Path: ${req.originalUrl}`);
-    next();
-  };
-  
-  module.exports = logger;
+const msg = (msg: string) => {
+    console.log(chalk.green(' SUC: ' + msg))
+}
+
+const wrn = (msg: string) => {
+    console.log(chalk.strikethrough.yellow(' WRN: ' + msg))
+}
+
+export {
+    err,
+    msg,
+    wrn
+}
