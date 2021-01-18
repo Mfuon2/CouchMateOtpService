@@ -16,4 +16,4 @@ const loggerTime = () => {
     return  year + "-" + month + "-" + date + " " + hours + ":" + minutes + ":" + seconds;
 }
 
-module.exports = consoleLogger;
+export {consoleLogger};
