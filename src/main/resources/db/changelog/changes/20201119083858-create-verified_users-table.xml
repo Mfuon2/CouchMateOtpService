@@ -1,0 +1,20 @@
+<?xml version="1.1" encoding="UTF-8"?>
+<databaseChangeLog
+		xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+			http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
+    <changeSet author="gordonochieng (generated)" id="1605764343671-1">
+        <preConditions onFail="CONTINUE">
+            <sqlCheck expectedResult="0">select count(*) from information_schema.tables where table_schema='otpdb' and table_name='verified_users'</sqlCheck>
+        </preConditions>
+        <createTable tableName="verified_users">
+            <column autoIncrement="true" name="id" type="BIGINT">
+                <constraints nullable="false" primaryKey="true" primaryKeyName="verified_usersPK"/>
+            </column>
+            <column name="cellphonenumber" type="VARCHAR(255)"/>
+            <column name="emailaddress" type="VARCHAR(255)"/>
+            <column name="isverified" type="BIT"/>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

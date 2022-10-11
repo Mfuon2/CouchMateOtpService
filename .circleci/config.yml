@@ -1,0 +1,344 @@
+version: 2.1
+
+jobs:
+  test:
+    docker:
+      - image: circleci/openjdk:14-jdk-buster
+    steps:
+      - checkout
+      - restore_cache:
+          key: otp-apis-{{ checksum "pom.xml" }}
+      - run: mvn dependency:go-offline
+      - save_cache:
+          paths:
+            - ~/.m2
+          key: otp-apis-{{ checksum "pom.xml" }}
+      - run:
+          name: Run test cases
+          command: mvn clean org.jacoco:jacoco-maven-plugin:prepare-agent test
+      - run:
+          name: Analyze on SonarCloud
+          command: mvn verify sonar:sonar -Dsonar.projectKey=apanirvana_otp-apis -Dsonar.organization=apanirvana -Dsonar.host.url=https://sonarcloud.io
+      - store_artifacts:
+          path: target/surefire-reports
+  build:
+    docker:
+      - image: circleci/openjdk:14-jdk-buster
+    steps:
+      - checkout
+      - restore_cache:
+          key: otp-apis-{{ checksum "pom.xml" }}
+      - run: mvn dependency:go-offline
+      - save_cache:
+          paths:
+            - ~/.m2
+          key: otp-apis-{{ checksum "pom.xml" }}
+      - run:
+          name: Package and generate jar file
+          command: mvn package
+      - store_artifacts:
+          path: target/otp-apis-0.0.1-SNAPSHOT.jar
+      - persist_to_workspace:
+          root: target
+          paths:
+            - otp-apis-0.0.1-SNAPSHOT.jar
+
+  dev-docker-build:
+    docker:
+      - image: docker:stable
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: false
+      - attach_workspace:
+          at: /target
+      - run:
+          name: Install dependencies
+          command: |
+            apk add --no-cache py-pip
+            pip install awscli==1.16.114
+      - run:
+          name: Building docker image
+          command: |
+            cp -r /target .
+            export AWS_ACCESS_KEY_ID=${AWS_DEV_KEY_ID}
+            export AWS_SECRET_ACCESS_KEY=${AWS_DEV_ACCESS_KEY}
+            docker build -t ${AWS_DEV_ECR_ENDPOINT}:${CIRCLE_SHA1} \
+            --build-arg DOCKER_SPRING_PROFILES_ACTIVE=dev \
+            --no-cache .
+            login=$(aws ecr get-login --no-include-email --region eu-west-1)
+            ${login}
+            docker push ${AWS_DEV_ECR_ENDPOINT}:${CIRCLE_SHA1}
+
+  dev-docker-deploy:
+    docker:
+      - image: docker:stable
+    steps:
+      - run:
+          name: Provision Built Image From ECR to ECS
+          command: |
+            apk add --no-cache py-pip
+            apk add --no-cache jq
+            pip install awscli==1.16.114
+      - run:
+          name: This forces the task definition to be re-evaluated and the new container image to be pulled.
+          command: |
+            export AWS_ACCESS_KEY_ID=${AWS_DEV_KEY_ID}
+            export AWS_SECRET_ACCESS_KEY=${AWS_DEV_ACCESS_KEY}
+            export ECR_IMAGE=${AWS_DEV_ECR_ENDPOINT}:${CIRCLE_SHA1}
+            export TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition otp-apis-task-definition --region $AWS_DEFAULT_REGION)
+            export NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE $ECR_IMAGE '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.compatibilities)')
+            echo $NEW_TASK_DEFINITION >> task.json
+            export NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json file://task.json --region $AWS_DEFAULT_REGION)
+            export NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
+            aws ecs update-service \
+              --cluster apa-apis-cluster \
+              --service otp-apis-service \
+              --task-definition otp-apis-task-definition:$NEW_REVISION \
+              --force-new-deployment
+
+  test-docker-build:
+    docker:
+      - image: docker:stable
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: false
+      - attach_workspace:
+          at: /target
+      - run:
+          name: Install dependencies
+          command: |
+            apk add --no-cache py-pip
+            pip install awscli==1.16.114
+      - run:
+          name: Building docker image
+          command: |
+            cp -r /target .
+            export AWS_ACCESS_KEY_ID=${AWS_TEST_KEY_ID}
+            export AWS_SECRET_ACCESS_KEY=${AWS_TEST_ACCESS_KEY}
+            docker build -t ${AWS_TEST_ECR_ENDPOINT}:${CIRCLE_SHA1} \
+            --build-arg DOCKER_SPRING_PROFILES_ACTIVE=test \
+            --no-cache .
+            login=$(aws ecr get-login --no-include-email --region eu-west-1)
+            ${login}
+            docker push ${AWS_TEST_ECR_ENDPOINT}:${CIRCLE_SHA1}
+
+  test-docker-deploy:
+    docker:
+      - image: docker:stable
+    steps:
+      - run:
+          name: Provision Built Image From ECR to ECS
+          command: |
+            apk add --no-cache py-pip
+            apk add --no-cache jq
+            pip install awscli==1.16.114
+      - run:
+          name: This forces the task definition to be re-evaluated and the new container image to be pulled.
+          command: |
+            export AWS_ACCESS_KEY_ID=${AWS_TEST_KEY_ID}
+            export AWS_SECRET_ACCESS_KEY=${AWS_TEST_ACCESS_KEY}
+            export ECR_IMAGE=${AWS_TEST_ECR_ENDPOINT}:${CIRCLE_SHA1}
+            export TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition otp-apis-task-definition --region $AWS_DEFAULT_REGION)
+            export NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE $ECR_IMAGE '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.compatibilities)')
+            echo $NEW_TASK_DEFINITION >> task.json
+            export NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json file://task.json --region $AWS_DEFAULT_REGION)
+            export NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
+            aws ecs update-service \
+              --cluster apa-apis-cluster \
+              --service otp-apis-service \
+              --task-definition otp-apis-task-definition:$NEW_REVISION \
+              --force-new-deployment
+
+  uat-docker-build:
+    docker:
+      - image: docker:stable
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: false
+      - attach_workspace:
+          at: /target
+      - run:
+          name: Install dependencies
+          command: |
+            apk add --no-cache py-pip
+            pip install awscli==1.16.114
+      - run:
+          name: Building docker image
+          command: |
+            cp -r /target .
+            export AWS_ACCESS_KEY_ID=${AWS_UAT_KEY_ID}
+            export AWS_SECRET_ACCESS_KEY=${AWS_UAT_ACCESS_KEY}
+            docker build -t ${AWS_UAT_ECR_ENDPOINT}:${CIRCLE_SHA1} \
+            --build-arg DOCKER_SPRING_PROFILES_ACTIVE=uat \
+            --no-cache .
+            login=$(aws ecr get-login --no-include-email --region eu-west-1)
+            ${login}
+            docker push ${AWS_UAT_ECR_ENDPOINT}:${CIRCLE_SHA1}
+
+  uat-docker-deploy:
+    docker:
+      - image: docker:stable
+    steps:
+      - run:
+          name: Provision Built Image From ECR to ECS
+          command: |
+            apk add --no-cache py-pip
+            apk add --no-cache jq
+            pip install awscli==1.16.114
+      - run:
+          name: This forces the task definition to be re-evaluated and the new container image to be pulled.
+          command: |
+            export AWS_ACCESS_KEY_ID=${AWS_UAT_KEY_ID}
+            export AWS_SECRET_ACCESS_KEY=${AWS_UAT_ACCESS_KEY}
+            export ECR_IMAGE=${AWS_UAT_ECR_ENDPOINT}:${CIRCLE_SHA1}
+            export TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition otp-apis-task-definition --region $AWS_DEFAULT_REGION)
+            export NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE $ECR_IMAGE '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.compatibilities)')
+            echo $NEW_TASK_DEFINITION >> task.json
+            export NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json file://task.json --region $AWS_DEFAULT_REGION)
+            export NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
+            aws ecs update-service \
+              --cluster apa-apis-cluster \
+              --service otp-apis-service \
+              --task-definition otp-apis-task-definition:$NEW_REVISION \
+              --force-new-deployment
+
+  prod-docker-build:
+    docker:
+      - image: docker:stable
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: false
+      - attach_workspace:
+          at: /target
+      - run:
+          name: Install dependencies
+          command: |
+            apk add --no-cache py-pip
+            pip install awscli==1.16.114
+      - run:
+          name: Building docker image
+          command: |
+            cp -r /target .
+            export AWS_ACCESS_KEY_ID=${AWS_PROD_KEY_ID}
+            export AWS_SECRET_ACCESS_KEY=${AWS_PROD_ACCESS_KEY}
+            docker build -t ${AWS_PROD_ECR_ENDPOINT}:${CIRCLE_SHA1} \
+            --build-arg DOCKER_SPRING_PROFILES_ACTIVE=prod \
+            --no-cache .
+            login=$(aws ecr get-login --no-include-email --region eu-west-1)
+            ${login}
+            docker push ${AWS_PROD_ECR_ENDPOINT}:${CIRCLE_SHA1}
+
+  prod-docker-deploy:
+    docker:
+      - image: docker:stable
+    steps:
+      - run:
+          name: Provision Built Image From ECR to ECS
+          command: |
+            apk add --no-cache py-pip
+            apk add --no-cache jq
+            pip install awscli==1.16.114
+      - run:
+          name: This forces the task definition to be re-evaluated and the new container image to be pulled.
+          command: |
+            export AWS_ACCESS_KEY_ID=${AWS_PROD_KEY_ID}
+            export AWS_SECRET_ACCESS_KEY=${AWS_PROD_ACCESS_KEY}
+            export ECR_IMAGE=${AWS_PROD_ECR_ENDPOINT}:${CIRCLE_SHA1}
+            export TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition otp-apis-task-definition --region $AWS_DEFAULT_REGION)
+            export NEW_TASK_DEFINITION=$(echo $TASK_DEFINITION | jq --arg IMAGE $ECR_IMAGE '.taskDefinition | .containerDefinitions[0].image = $IMAGE | del(.taskDefinitionArn) | del(.revision) | del(.status) | del(.requiresAttributes) | del(.compatibilities)')
+            echo $NEW_TASK_DEFINITION >> task.json
+            export NEW_TASK_INFO=$(aws ecs register-task-definition --cli-input-json file://task.json --region $AWS_DEFAULT_REGION)
+            export NEW_REVISION=$(echo $NEW_TASK_INFO | jq '.taskDefinition.revision')
+            aws ecs update-service \
+              --cluster apa-apis-cluster \
+              --service otp-apis-service \
+              --task-definition otp-apis-task-definition:$NEW_REVISION \
+              --force-new-deployment
+
+workflows:
+  version: 2.1
+  otp-apis-pipeline:
+    jobs:
+      - test:
+          context: SonarCloud
+      - build:
+          requires:
+            - test
+      - dev-docker-build:
+          context: AWS
+          requires:
+            - build
+          filters:
+            branches:
+              only: dev
+      - dev-docker-deploy:
+          context: AWS
+          requires:
+            - dev-docker-build
+          filters:
+            branches:
+              only: dev
+      - uat-docker-build:
+          context: AWS
+          requires:
+            - build
+          filters:
+            branches:
+              only:
+                - rc
+      - uat-docker-deploy:
+          context: AWS
+          requires:
+            - uat-docker-build
+          filters:
+            branches:
+              only:
+                - rc
+      - approve-test-build:
+          type: approval
+          requires:
+            - uat-docker-deploy
+      - test-docker-build:
+          context: AWS
+          requires:
+            - approve-test-build
+          filters:
+            branches:
+              only:
+                - rc
+      - test-docker-deploy:
+          context: AWS
+          requires:
+            - test-docker-build
+          filters:
+            branches:
+              only:
+                - rc
+      - approve-prod-build:
+          type: approval
+          requires:
+            - build
+          filters:
+            branches:
+              only:
+                - master
+      - prod-docker-build:
+          context: AWS
+          requires:
+            - approve-prod-build
+          filters:
+            branches:
+              only:
+                - master
+      - prod-docker-deploy:
+          context: AWS
+          requires:
+            - prod-docker-build
+          filters:
+            branches:
+              only:
+                - master
