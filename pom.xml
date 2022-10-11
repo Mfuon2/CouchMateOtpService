@@ -34,7 +34,7 @@
 		<diffChangeLogFile>src/main/resources/db/changelog/db.changelog-diff.xml</diffChangeLogFile>
 		<liquibase.referenceUrl>hibernate:spring:ke.co.apollo.otp.entity?dialect=org.hibernate.dialect.MySQL5Dialect&amp;hibernate.physical_naming_strategy=org.springframework.boot.orm.jpa.hibernate.SpringPhysicalNamingStrategy&amp;hibernate.implicit_naming_strategy=org.springframework.boot.orm.jpa.hibernate.SpringImplicitNamingStrategy</liquibase.referenceUrl>
 		<liquibase.driver>com.mysql.cj.jdbc.Driver</liquibase.driver>
-		<liquibase-core.version>4.1.1</liquibase-core.version>
+		<liquibase-core.version>4.8.0</liquibase-core.version>
 		<liquibase-maven-plugin.version>4.1.1</liquibase-maven-plugin.version>
 		<liquibase-hibernate5.version>4.1.1</liquibase-hibernate5.version>
 	</properties>
